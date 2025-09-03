@@ -1,0 +1,11 @@
+_BASE_: ctrg.yml
+
+# Visual Extractor
+visual_extractor: swin3d_b
+feature_size: 48 
+pretrain_cnn_file: 
+d_vf: 1152 # 1152 
+batch_size: 2
+
+# Output Dir
+save_dir: /jhcnas5/nixuefeng/jhcpu5_data_files/CTRG/results

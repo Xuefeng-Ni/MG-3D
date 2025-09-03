@@ -1,0 +1,77 @@
+default:
+- seed: 47
+- b_min: 0.0
+- b_max: 1.0
+- space_x: 1.5
+- space_y: 1.5
+- space_z: 1.5
+- roi_x: 96 
+- roi_y: 96 
+- roi_z: 96 
+- num_workers: 4
+- overlap: 0.5
+- in_channels: 1
+- reg_weight: 0.00001
+- momentum: 0.99
+- world_size: 1
+- rank: 0
+- dist_backend: nccl
+- lrschedule: warmup_cosine
+- warmup_epochs: 50
+- smooth_dr: 0.000001
+- smooth_nr: 0.0
+- norm_name: instance
+- start_epoch: 0
+- print_freq: 10
+- feature_size: 48 
+- out_channels: 32
+- sw_batch_size: 4
+- batch_size: 1
+- data_root_path: /home/xuefeng/downstream/msd_lung/
+- accum_iter: 1
+- metric_name: DSC
+
+10_Decathlon_Task06_Lung:
+- json_list: /home/nixuefeng/MSD/jsons/10_Decathlon_Task06_Lung_folds.json
+- data_dir: /data/nixuefeng/Task06_Lung/
+- persistent_cache_dir: /data/nixuefeng/Task06_Lung/cache/MSD_LUNG_1.5_250/
+- num_positive: 2
+- num_negative: 1
+- RandFlipd_prob: 0.5
+- RandRotate90d_prob: 0.3
+- RandScaleIntensityd_prob: 0.1
+- RandShiftIntensityd_prob: 0.1
+- loss_name: DiceLoss
+- a_min: -175.0
+- a_max: 250.0
+- out_channels: 2
+- val_every: 5
+- max_epochs: 1000
+- tolerance_mm: 2
+- tolerance_mm: 4
+
+10_Decathlon_Task10_Colon:
+- json_list: ./jsons/10_Decathlon_Task10_Colon_folds.json
+- data_dir: /home/ubuntu/datasets/Task10_Colon #! Modify if necessary
+- persistent_cache_dir: /home/ubuntu/cache/Task10 #! Modify if necessary
+- print_freq: 10
+- a_min: -57.0
+- a_max: 175.0
+- out_channels: 2
+- val_every: 5
+- weight_decay: 0.00001
+- optim_lr: 0.0003
+- RandFlipd_prob:  0.5
+- RandRotate90d_prob: 0.25
+- RandScaleIntensityd_prob: 0.5
+- RandShiftIntensityd_prob: 0
+- max_epochs: 1000
+- loss_name: DiceCELoss
+- roi_x: 96
+- roi_y: 96
+- roi_z: 96
+- space_x: 1
+- space_y: 1
+- space_z: 1
+- num_samples: 3
+- tolerance_mm: 4

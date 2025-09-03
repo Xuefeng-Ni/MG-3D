@@ -1,0 +1,5 @@
+Collecting SimpleITK
+  Downloading SimpleITK-2.2.1-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (52.7 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 52.7/52.7 MB 20.4 MB/s eta 0:00:00
+Installing collected packages: SimpleITK
+Successfully installed SimpleITK-2.2.1

@@ -1,0 +1,7 @@
+{
+  "preprocess_dir": "/ssd1/xuefeng/stoic2021/training/scratch/",
+  "num_workers": 4,
+  "lr": 0.00001, 
+  "epochs": 100,
+  "batch_size": 2
+}

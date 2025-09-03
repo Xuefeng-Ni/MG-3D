@@ -1,0 +1,416 @@
+import json
+import os
+import random
+import re
+from pathlib import Path
+
+import cv2
+import numpy as np
+import pandas as pd
+import pydicom
+from sklearn.model_selection import train_test_split
+
+from make_arrow_nii_jpg import make_arrow_chexpert, make_arrow_pnsa_pneumonia, make_arrow_clm_mimic_cxr, make_arrow_clm_ctrg_chest, make_arrow_clm_ctrg_chest_nitfy
+from utils.text_process import SentenceSplitter, split_into_sections
+
+import re
+    
+import pyarrow as pa
+
+def split_sentences(text):
+    # 使用正则表达式来匹配不在括号内的逗号
+    # 这里使用的是非贪婪匹配
+    sentences = re.split(r'[,;]\s*(?![^()]*\))', text)
+    commas = re.finditer(r'[,;]\s*(?![^()]*\))', text)
+    end = []
+    processed = []
+    for comma in commas:
+        end.append(comma.group())
+    for i in range(len(sentences)):
+        if sentences[i].strip():
+            if i == len(sentences) - 1:
+                processed.append(sentences[i])
+            else:
+                processed.append(sentences[i].strip() + end[i])
+    return processed
+##    return [sentence for sentence in sentences if sentence]
+
+
+
+def prepro_vision_mlc_chexpert():
+    random.seed(42)
+
+    CHEXPERT_COMPETITION_TASKS = [
+        "Atelectasis",
+        "Cardiomegaly",
+        "Consolidation",
+        "Edema",
+        "Pleural Effusion",
+    ]
+
+    CHEXPERT_UNCERTAIN_MAPPINGS = {
+        "Atelectasis": 1,
+        "Cardiomegaly": 0,
+        "Consolidation": 0,
+        "Edema": 1,
+        "Pleural Effusion": 1,
+    }
+
+    CHEXPERT_VIEW_COL = "Frontal/Lateral"
+
+    data_root = "data/finetune_vision_data/chexpert/"
+    chexpert_train_path = f"{data_root}/CheXpert-v1.0-small/train.csv"
+    chexpert_test_path = f"{data_root}/CheXpert-v1.0-small/valid.csv"
+
+    df = pd.read_csv(chexpert_train_path)
+    df = df.fillna(0)
+    df = df[df["Frontal/Lateral"] == "Frontal"]
+
+    task_dfs = []
+    for i, t in enumerate(CHEXPERT_COMPETITION_TASKS):
+        index = np.zeros(14)
+        index[i] = 1
+        df_task = df[
+            (df["Atelectasis"] == index[0])
+            & (df["Cardiomegaly"] == index[1])
+            & (df["Consolidation"] == index[2])
+            & (df["Edema"] == index[3])
+            & (df["Pleural Effusion"] == index[4])
+            & (df["Enlarged Cardiomediastinum"] == index[5])
+            & (df["Lung Lesion"] == index[7])
+            & (df["Lung Opacity"] == index[8])
+            & (df["Pneumonia"] == index[9])
+            & (df["Pneumothorax"] == index[10])
+            & (df["Pleural Other"] == index[11])
+            & (df["Fracture"] == index[12])
+            & (df["Support Devices"] == index[13])
+            ]
+        df_task = df_task.sample(n=200)
+        task_dfs.append(df_task)
+    df_200 = pd.concat(task_dfs)
+
+    df = pd.read_csv(chexpert_train_path)
+    test_df = pd.read_csv(chexpert_test_path)
+
+    df = df[~df["Path"].isin(df_200["Path"])]
+    valid_ids = np.random.choice(len(df), size=5000, replace=False)
+    valid_df = df.iloc[valid_ids]
+    train_df = df.drop(valid_ids, errors="ignore")
+
+    train_df = train_df[train_df[CHEXPERT_VIEW_COL] == "Frontal"]
+    valid_df = valid_df[valid_df[CHEXPERT_VIEW_COL] == "Frontal"]
+    test_df = test_df[test_df[CHEXPERT_VIEW_COL] == "Frontal"]
+    df_200 = df_200[df_200[CHEXPERT_VIEW_COL] == "Frontal"]
+
+    train_df["Path"] = train_df["Path"].map(lambda x: os.path.join(data_root, x))
+    valid_df["Path"] = valid_df["Path"].map(lambda x: os.path.join(data_root, x))
+    test_df["Path"] = test_df["Path"].map(lambda x: os.path.join(data_root, x))
+    df_200["Path"] = df_200["Path"].map(lambda x: os.path.join(data_root, x))
+
+    train_df = train_df.fillna(0)
+    valid_df = valid_df.fillna(0)
+    test_df = test_df.fillna(0)
+    df_200 = df_200.fillna(0)
+
+    uncertain_mask = {k: -1 for k in CHEXPERT_COMPETITION_TASKS}
+    train_df = train_df.replace(uncertain_mask, CHEXPERT_UNCERTAIN_MAPPINGS)
+    valid_df = valid_df.replace(uncertain_mask, CHEXPERT_UNCERTAIN_MAPPINGS)
+    test_df = test_df.replace(uncertain_mask, CHEXPERT_UNCERTAIN_MAPPINGS)
+    df_200 = df_200.replace(uncertain_mask, CHEXPERT_UNCERTAIN_MAPPINGS)
+
+    train_df_001 = train_df.sample(frac=0.01)
+    train_df_01 = train_df.sample(frac=0.1)
+
+    print(f"Number of train samples: {len(train_df)}")
+    print(f"Number of valid samples: {len(valid_df)}")
+    print(f"Number of test samples: {len(test_df)}")
+    print(f"Number of chexpert5x200 samples: {len(df_200)}")
+
+    data = {
+        "train": [],
+        "train_001": [],
+        "train_01": [],
+        "val": [],
+        "test": [],
+    }
+
+    for split, split_data in zip(["train", "train_001", "train_01", "val", "test"],
+                                 [train_df, train_df_001, train_df_01, valid_df, test_df]):
+        for sample_idx, sample in split_data.iterrows():
+
+            img_path = sample["Path"]
+            texts = ["None"]
+            label = sample[CHEXPERT_COMPETITION_TASKS].astype(int).tolist()
+
+            if len(texts) > 0:
+                data[split].append({
+                    "img_path": img_path,
+                    "texts": texts,
+                    "chexpert": label
+                })
+
+    make_arrow_chexpert(data, "mlc_chexpert", "data/finetune_vision_arrows/")
+
+
+def read_dicom_save_png(img_path):
+    dcm = pydicom.read_file(img_path)
+    x = dcm.pixel_array
+
+    x = cv2.convertScaleAbs(x, alpha=(255.0 / x.max()))
+    if dcm.PhotometricInterpretation == "MONOCHROME1":
+        x = cv2.bitwise_not(x)
+
+    new_img_path = str(img_path).replace(".dcm", ".png").replace("stage_2_train_images", "stage_2_train_images_png")
+    cv2.imwrite(new_img_path, x)
+    return new_img_path
+
+
+def prepro_vision_mlc_pnsa_pneumonia(test_fac=0.15):
+    PNEUMONIA_DATA_DIR = Path("data/finetune_vision_data/rsna_pneumonia/")
+    PNEUMONIA_ORIGINAL_TRAIN_CSV = PNEUMONIA_DATA_DIR / "stage_2_train_labels.csv"
+    PNEUMONIA_TRAIN_CSV = PNEUMONIA_DATA_DIR / "train.csv"
+    PNEUMONIA_VALID_CSV = PNEUMONIA_DATA_DIR / "val.csv"
+    PNEUMONIA_TEST_CSV = PNEUMONIA_DATA_DIR / "test.csv"
+    PNEUMONIA_IMG_DIR = PNEUMONIA_DATA_DIR / "stage_2_train_images"
+    PNEUMONIA_TRAIN_PCT = 0.7
+
+    os.makedirs(Path(str(PNEUMONIA_IMG_DIR).replace("stage_2_train_images", "stage_2_train_images_png")), exist_ok=True)
+
+    df = pd.read_csv(PNEUMONIA_ORIGINAL_TRAIN_CSV)
+
+    # create bounding boxes
+    def create_bbox(row):
+        if row["Target"] == 0:
+            return 0
+        else:
+            x1 = row["x"]
+            y1 = row["y"]
+            x2 = x1 + row["width"]
+            y2 = y1 + row["height"]
+            return [x1, y1, x2, y2]
+
+    df["bbox"] = df.apply(lambda x: create_bbox(x), axis=1)
+
+    # aggregate multiple boxes
+    df = df[["patientId", "bbox"]]
+    df = df.groupby("patientId").agg(list)
+    df = df.reset_index()
+    df["bbox"] = df["bbox"].apply(lambda x: None if x == [0] else x)
+
+    # create labels
+    df["Target"] = df["bbox"].apply(lambda x: 0 if x == None else 1)
+
+    # no encoded pixels mean healthy
+    df["Path"] = df["patientId"].apply(lambda x: PNEUMONIA_IMG_DIR / (x + ".dcm"))
+
+    # split data
+    train_df, test_val_df = train_test_split(df, test_size=test_fac * 2, random_state=0)
+    test_df, valid_df = train_test_split(test_val_df, test_size=0.5, random_state=0)
+
+    print(f"Number of train samples: {len(train_df)}")
+    print(train_df["Target"].value_counts())
+    print(f"Number of valid samples: {len(valid_df)}")
+    print(valid_df["Target"].value_counts())
+    print(f"Number of test samples: {len(test_df)}")
+    print(test_df["Target"].value_counts())
+
+    train_df_001 = train_df.sample(frac=0.01)
+    train_df_01 = train_df.sample(frac=0.1)
+
+    data = {
+        "train": [],
+        "train_001": [],
+        "train_01": [],
+        "val": [],
+        "test": [],
+    }
+    for split, split_data in zip(["train", "train_001", "train_01", "val", "test"],
+                                 [train_df, train_df_001, train_df_01, valid_df, test_df]):
+        for sample_idx, sample in split_data.iterrows():
+            img_path = read_dicom_save_png(sample["Path"])
+            texts = ["None"]
+            label = [sample["Target"]]
+            if len(texts) > 0:
+                data[split].append({
+                    "img_path": img_path,
+                    "texts": texts,
+                    "pnsa_pneumonia": label
+                })
+
+    make_arrow_pnsa_pneumonia(data, "mlc_pnsa_pneumonia", "data/finetune_vision_arrows/")
+
+
+def prepro_vision_clm_mimic_cxr(min_length=3):
+    random.seed(42)
+
+    data = {
+        "train": [],
+        "val": [],
+        "test": []
+    }
+    data_root = "data/pretrain_data/mimic_cxr/"
+    image_root = f"{data_root}/files"
+    sectioned_path = f"{data_root}/mimic_cxr_sectioned.csv"
+    metadata_path = f"{data_root}/mimic-cxr-2.0.0-metadata.csv"
+    chexpert_path = f"{data_root}/mimic-cxr-2.0.0-chexpert.csv"
+    split_path = f"{data_root}/mimic-cxr-2.0.0-split.csv"
+    presplit_data_path = f"{data_root}/mimic_cxr_presplit.json"
+
+    sectioned_data = pd.read_csv(sectioned_path)
+    sectioned_data = sectioned_data.set_index("study")
+    metadata = pd.read_csv(metadata_path)
+    chexpert_data = pd.read_csv(chexpert_path)
+    chexpert_data["subject_id_study_id"] = chexpert_data["subject_id"].map(str) + "_" + chexpert_data["study_id"].map(
+        str)
+    chexpert_data = chexpert_data.set_index("subject_id_study_id")
+    chexpert_data = chexpert_data.fillna(0)
+    chexpert_data[chexpert_data == -1] = 0
+    split_data = pd.read_csv(split_path)
+    split_data = split_data.set_index("dicom_id")
+    presplit_data = json.load(open(presplit_data_path))
+
+    for split in ["train", "val", "test"]:
+        presplit_split_data = presplit_data[split]
+        for sample in presplit_split_data:
+            subject_id = str(sample["subject_id"])
+            study_id = str(sample["study_id"])
+            img_path = os.path.join(image_root, sample["image_path"][0].replace(".jpg", ".png"))
+            assert os.path.exists(img_path)
+
+            if (subject_id + "_" + study_id) not in chexpert_data.index:
+                print("Missing {}".format(subject_id + "_" + study_id))
+                continue
+            chexpert = chexpert_data.loc[subject_id + "_" + study_id].iloc[2:].astype(int).tolist()
+
+            findings = [sample["findings"]]
+            impression = [sample["impression"]]
+
+            impression = [re.sub(r"\s+", " ", text.strip()) for text in impression]
+            impression = [text for text in impression if len(text.split()) >= min_length]
+
+            findings = [re.sub(r"\s+", " ", text.strip()) for text in findings]
+            findings = [text for text in findings if len(text.split()) >= min_length]
+
+            if len(impression) == 1 and len(findings) == 1:
+                data[split].append({
+                    "img_path": img_path,
+                    "texts": findings,
+                    "chexpert": chexpert,
+                    "findings": findings,
+                    "impression": impression,
+                })
+
+    make_arrow_clm_mimic_cxr(data, "clm_mimic_cxr", "data/finetune_vision_arrows/")
+
+def prepro_vision_clm_ctrg_jpg(min_length=3):
+    random.seed(42)
+
+    data = {
+        "train": [],
+        "val": [],
+        "test": []
+    }
+
+    tokenizer = SentenceSplitter(lang='en', section_splitter=split_into_sections)
+
+    filename = f'/project/medimgfmod/CTRG/label/chest/chest_ctrg_jpg.json'
+
+    ann = json.loads(open(filename, 'r').read())
+    for i in range(len(ann)):
+        imgpath = ann[i]['image_path']
+        reports = ann[i]['report']
+        results = ann[i]['result']
+        
+        sentences_findings, sentences_impression = [], []
+        reports_sentence = tokenizer("\n FINDINGS:  " + reports + " \n IMPRESSION: " + results, study=f's{ann[i]["id"]}')
+        if 'impression' in reports_sentence.keys() and len(reports_sentence['impression'][1]) != 0:
+            for idx, sentence in enumerate(reports_sentence['impression'][1]):
+                sentences_impression.append(sentence)
+        if 'findings' in reports_sentence.keys() and len(reports_sentence['findings'][1]) != 0:
+            for idx, sentence in enumerate(reports_sentence['findings'][1]):
+                sentences_findings.append(sentence)
+
+        texts = [reports + results]
+        texts = [re.sub(r"\s+", " ", text.strip()) for text in texts]
+        texts = [text for text in texts if len(text.split()) >= min_length]
+        reports = [reports]
+        reports = [re.sub(r"\s+", " ", report.strip()) for report in reports]
+        reports = [report for report in reports if len(report.split()) >= min_length]
+        results = [results]
+        results = [re.sub(r"\s+", " ", result.strip()) for result in results]
+        results = [result for result in results]
+        
+        sentences_list = []
+        sentences_findings = reports[0].split('. ')
+        for k in range(len(sentences_findings)):
+            if k == len(sentences_findings) - 1:
+                sents = split_sentences(sentences_findings[k])
+            else:
+                sents = split_sentences(sentences_findings[k] + '. ')
+            for j in range(len(sents)):
+                sentences_list.append(sents[j])
+        sentences_findings = sentences_list
+
+        sentences_list = []
+        sentences_impression = results[0].split('. ')
+        for k in range(len(sentences_impression)):
+            if k == len(sentences_impression) - 1:
+                sents = split_sentences(sentences_impression[k])
+            else:
+                sents = split_sentences(sentences_impression[k] + '. ')
+            for j in range(len(sents)):
+                sentences_list.append(sents[j])
+        sentences_impression = sentences_list   
+
+        if i <= int(len(ann)*0.8):
+            data["train"].append({
+                "img_path": imgpath, 
+                "texts": texts,
+                "findings": reports,
+                "findings_sen": sentences_findings,
+                "impression": results,
+                "impression_sen": sentences_impression,
+            })
+        elif i <= int(len(ann)*0.9):
+            data["test"].append({
+                "img_path": imgpath, 
+                "texts": texts,
+                "findings": reports,
+                "findings_sen": sentences_findings,
+                "impression": results,
+                "impression_sen": sentences_impression,
+            })
+        else:
+            data["val"].append({
+                "img_path": imgpath, 
+                "texts": texts,
+                "findings": reports,
+                "findings_sen": sentences_findings,
+                "impression": results,
+                "impression_sen": sentences_impression,
+            })
+
+    return make_arrow_clm_ctrg_chest(data, "clm_chest_ctrg", "/scratch/medimgfmod/CT/CTRG/pretrain_arrows/")
+
+if __name__ == '__main__':
+
+    bs_jpg = prepro_vision_clm_ctrg_jpg()
+
+    for split in ["train", "val", "test"]:
+        batches_jpg = [b for b in bs_jpg if b[-1] == split]
+        dataframe_jpg = pd.DataFrame(batches_jpg, columns=["image", "caption", "image_id", "findings", "impression", "findings_sen", "impression_sen",
+                                                   "split"])
+
+        batches_nii = [b for b in bs_nii if b[-1] == split]
+        dataframe_nii = pd.DataFrame(batches_nii, columns=["image", "caption", "image_id", "findings", 
+                                                           "impression", "findings_sen", "impression_sen", "split"])
+        
+        dataframe_cat = pd.concat([dataframe_jpg, dataframe_nii])
+        table = pa.Table.from_pandas(dataframe_cat)
+        
+        save_dir = "/scratch/medimgfmod/CT/CTRG/pretrain_arrows/"
+        dataset_name = "clm_chest_ctrg"
+        os.makedirs(save_dir, exist_ok=True)
+        with pa.OSFile(f"{save_dir}/{dataset_name}_{split}.arrow", "wb") as sink:
+            with pa.RecordBatchFileWriter(sink, table.schema) as writer:
+                writer.write_table(table)
