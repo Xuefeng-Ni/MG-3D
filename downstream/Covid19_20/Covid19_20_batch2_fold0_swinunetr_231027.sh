@@ -8,7 +8,7 @@ export OMP_NUM_THREADS=48
 exp=`echo ${0%.sh}`
 exp=`echo ${exp#*/}`
 prefix_dir=/tmp
-output_dir=/home/xuefeng/Covid19_20/exps/fold1_pcrlv2_official #TODO
+output_dir=/home/xuefeng/Covid19_20/exps/fold1_swin_official #TODO
 ####################
 
 roi_x=192   
