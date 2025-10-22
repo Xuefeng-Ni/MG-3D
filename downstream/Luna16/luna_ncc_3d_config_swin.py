@@ -53,7 +53,7 @@ class ncc_config:
     # pretrain
     resume = None
     pretrained_model = None
-    pretrained_model = '/home/xuefeng/pretrain_ckpts/version_131/checkpoints/epoch=121-step=370651.ckpt'
+    pretrained_model = '/home/xuefeng/MG-3D-Swin-B.ckpt'
     transferred_part = 'encoder'#'encoder'
 
     transferred_dismatched_keys = None #['module.', 'module.encoder.']
