@@ -97,7 +97,7 @@ bash run_scripts/pretrain_multi_gpus.sh
 
 ### 3. Pre-trained Models
 
-We provide various models for downstream tasks. You can find the [3D Swin-B](https://drive.google.com/file/d/1Aew0la4wPbxOKaF3BCApS15Pv-TYsRQr/view?usp=drive_link), [3D Swin-L](https://drive.google.com/file/d/1--ELM9N13MvJhB82xpiB3pqf29Gg8ICj/view?usp=drive_link), [3D UNet](https://drive.google.com/file/d/1uPFzy66FshFebZu9UcT1qse7m0_VI-FS/view?usp=drive_link), and [3D nn-UNet](https://drive.google.com/file/d/1IhC9G6T50LhleC31K7fG649UJSVzrENV/view?usp=drive_link).
+We provide various models for downstream tasks. You can find the [3D Swin-B-47K](https://drive.google.com/file/d/1Aew0la4wPbxOKaF3BCApS15Pv-TYsRQr/view?usp=drive_link), [3D Swin-L-47K](https://drive.google.com/file/d/1--ELM9N13MvJhB82xpiB3pqf29Gg8ICj/view?usp=drive_link), [3D UNet-1.4K](https://drive.google.com/file/d/1uPFzy66FshFebZu9UcT1qse7m0_VI-FS/view?usp=drive_link), and [3D nn-UNet-1.4K](https://drive.google.com/file/d/1IhC9G6T50LhleC31K7fG649UJSVzrENV/view?usp=drive_link).
 
 ## Acknowledgement
 
