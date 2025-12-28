@@ -95,6 +95,10 @@ Multiple GPUs:
 bash run_scripts/pretrain_multi_gpus.sh
 ```
 
+### 3. Pre-trained Models
+
+We provide various models for downstream tasks. You can find the [3D Swin-B](https://drive.google.com/file/d/1Aew0la4wPbxOKaF3BCApS15Pv-TYsRQr/view?usp=drive_link), [3D Swin-L](https://drive.google.com/file/d/1--ELM9N13MvJhB82xpiB3pqf29Gg8ICj/view?usp=drive_link), [3D UNet](https://drive.google.com/file/d/1uPFzy66FshFebZu9UcT1qse7m0_VI-FS/view?usp=drive_link), and [3D nn-UNet](https://drive.google.com/file/d/1IhC9G6T50LhleC31K7fG649UJSVzrENV/view?usp=drive_link).
+
 ## Acknowledgement
 
 The code is based on [PTunifier](https://github.com/zhjohnchan/PTUnifier), [MONAI](https://github.com/Project-MONAI/MONAI), [CT-CLIP](https://github.com/ibrahimethemhamamci/CT-CLIP), [M2KT](https://github.com/LX-doctorAI1/M2KT).
@@ -104,9 +108,11 @@ We thank the authors for their open-sourced code and encourage users to cite the
 ## Citation
 
 If you find this repo useful for your research, please consider citing the paper as follows:
+```latex
 @article{ni2024mg,
   title={MG-3D: Multi-Grained Knowledge-Enhanced 3D Medical Vision-Language Pre-training},
   author={Ni, Xuefeng and Wu, Linshan and Zhuang, Jiaxin and Wang, Qiong and Wu, Mingxiang and Vardhanabhuti, Varut and Zhang, Lihai and Gao, Hanyu and Chen, Hao},
   journal={arXiv preprint arXiv:2412.05876},
   year={2024}
 }
+```
